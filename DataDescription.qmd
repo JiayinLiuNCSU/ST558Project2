@@ -1,0 +1,421 @@
+---
+title: "DataDescription"
+author: "Jiayin Liu"
+format: html
+editor: visual
+---
+
+```{r, echo=FALSE,warning=FALSE}
+library(readxl)
+library(tidyverse)
+library(dplyr)
+library(janitor)
+library(scales)
+library(lubridate)
+library(ggExtra)
+library(ggplot2)
+library(ggridges)
+```
+
+# Data preparation
+
+**import the data**
+
+```{r,warning=FALSE}
+dt <- readxl::read_excel("US_Superstore_data.xls")
+```
+
+**clean the data** 
+
+step 1: rename the colnames that can cause problem
+
+```{r}
+dt_col <- dt %>%
+  clean_names()
+colnames(dt)
+```
+
+step 2: check the data type and make the variable to the class I want
+
+```{r}
+str(dt_col)
+dt_date <- dt_col %>%
+  mutate(order_date = as.Date(order_date),
+         ship_date = as.Date(ship_date),
+         order_year = year(order_date),
+         order_month = month(order_date,label = TRUE,abbr = TRUE,locale = "C"),# I do this locale=C because my pc speak Chinese 
+         order_year_month = floor_date(order_date,unit = "month"),
+         shipping_days = as.numeric(ship_date - order_date),
+         profit_status = case_when(profit > 0 ~ "Profit",
+                                   profit == 0 ~ "Break Even",
+                                   profit < 0 ~ "Loss",
+                                   TRUE ~ NA))
+```
+
+**check the data structure**
+
+```{r}
+str(dt_date)
+
+```
+
+**check the missing data**
+
+```{r}
+dt_date %>%summarise(across(everything(),~ sum(is.na(.))))->missing_summary # 
+missing_summary
+```
+
+Based on the summary output. seems no missing items under each variable. Perfect!
+
+# Contingency tables
+
+## one way contingency table
+
+```{r}
+#1. product category
+category_table <- dt_date %>%
+  count(category) %>%
+  mutate(percent = n / sum(n))
+category_table
+
+#2. customer segment
+segment_table <- dt_date %>%
+  count(segment) %>%
+  mutate(percent = n / sum(n))
+segment_table
+
+#3. region
+region_table <- dt_date %>%
+  count(region) %>%
+  mutate(percent = n / sum(n))
+region_table
+
+#4. profit status
+profit_status_table <- dt_date %>%
+  count(profit_status) %>%
+  mutate(percent = n / sum(n))
+profit_status_table
+
+```
+
+## two way contingency table
+
+```{r}
+#1. category and segment
+category_segment_table <- dt_date %>%
+  drop_na(category, segment) %>%
+  group_by(category, segment) %>%
+  summarize(count = n(),.groups = "drop") %>%
+  pivot_wider(names_from = segment,values_from = count,values_fill = 0)
+category_segment_table
+
+#2. region and profit status
+region_profit_table <- dt_date %>%
+  drop_na(region, profit_status) %>%
+  group_by(region, profit_status) %>%
+  summarize(count = n(),.groups = "drop") %>%
+  pivot_wider(names_from = profit_status,values_from = count,values_fill = 0)
+region_profit_table
+
+
+#3. ship mode by customer segment
+category_segment_table <- dt_date %>%
+  drop_na(category, segment) %>%
+  group_by(category, segment) %>%
+  summarize(count = n(),.groups = "drop") %>%
+  pivot_wider(names_from = segment,values_from = count,values_fill = 0)
+category_segment_table
+
+#4. category by region
+category_region_table <- dt_date %>%
+  drop_na(category, region) %>%
+  group_by(category, region) %>%
+  summarize(count = n(),.groups = "drop") %>%
+  pivot_wider(names_from = region,values_from = count,values_fill = 0)
+category_region_table
+
+```
+
+# Numerical summary
+
+```{r}
+#1. overall numerical summary
+overall_numeric_summary <- dt_date %>%
+  summarize(across(c(sales,quantity,discount,profit,shipping_days),
+                   list(mean = ~ mean(.x, na.rm = TRUE),
+                        median = ~ median(.x, na.rm = TRUE),
+                        sd = ~ sd(.x, na.rm = TRUE),
+                        IQR = ~ IQR(.x, na.rm = TRUE)),.names = "{.col}_{.fn}")) %>%
+  pivot_longer(cols = everything(),
+               names_to = c("variable", "statistic"),
+               names_pattern = "^(.*)_(mean|median|sd|IQR)$",
+               values_to = "value") %>%
+  pivot_wider(names_from = statistic,values_from = value)
+
+overall_numeric_summary
+
+#2.numerical summary by product category
+numeric_summary_by_category <- dt_date %>%
+  group_by(category) %>%
+  drop_na(category) %>%
+  summarize(
+    across(c(sales,quantity,discount,profit,shipping_days),
+           list(mean = ~ mean(.x, na.rm = TRUE),
+                median = ~ median(.x, na.rm = TRUE),
+                sd = ~ sd(.x, na.rm = TRUE),
+                IQR = ~ IQR(.x, na.rm = TRUE)),
+           .names = "{.fn}_{.col}"))
+numeric_summary_by_category
+
+#3. numerical summary by customer segment
+numeric_summary_by_segment <- dt_date %>%
+  group_by(segment) %>%
+  drop_na(segment) %>%
+  summarize(
+    across(c(sales,quantity,discount,profit,shipping_days),
+           list(mean = ~ mean(.x, na.rm = TRUE),
+                median = ~ median(.x, na.rm = TRUE),
+                sd = ~ sd(.x, na.rm = TRUE),
+                IQR = ~ IQR(.x, na.rm = TRUE)),
+           .names = "{.fn}_{.col}"))
+numeric_summary_by_segment
+
+#4. numerical summary by region
+numeric_summary_by_region <- dt_date %>%
+  group_by(region) %>%
+  drop_na(region) %>%
+summarize(
+    across(c(sales,quantity,discount,profit,shipping_days),
+           list(mean = ~ mean(.x, na.rm = TRUE),
+                median = ~ median(.x, na.rm = TRUE),
+                sd = ~ sd(.x, na.rm = TRUE),
+                IQR = ~ IQR(.x, na.rm = TRUE)),
+           .names = "{.fn}_{.col}"))
+numeric_summary_by_region
+
+#5. numerical summary by customer segment
+numeric_summary_by_category_segment <- dt_date %>%
+  group_by(category, segment) %>%
+  drop_na(category, segment) %>%
+summarize(
+    across(c(sales,quantity,discount,profit,shipping_days),
+           list(mean = ~ mean(.x, na.rm = TRUE),
+                median = ~ median(.x, na.rm = TRUE),
+                sd = ~ sd(.x, na.rm = TRUE),
+                IQR = ~ IQR(.x, na.rm = TRUE)),
+           .names = "{.fn}_{.col}"))
+numeric_summary_by_category_segment
+```
+
+# Plot
+
+For the regular plots:
+
+```{r}
+#1. bar chart of product categories
+plot1 <- ggplot(dt_date,aes(x = category)) +
+  geom_bar() +
+  labs(
+    title = "Number of Order Items by Product Category",
+    subtitle = "Frequency of records in each product category",
+    x = "Product Category",
+    y = "Number of Order Items"
+  ) +
+  theme_minimal()
+
+plot1
+
+#2.Side-by-side bar chart of category and customer segment
+plot2 <- ggplot(dt_date,aes(x = category,fill = segment)) +
+  geom_bar(position = "dodge") +
+  labs(
+    title = "Order Items by Product Category and Customer Segment",
+    subtitle = "Comparison of customer purchasing patterns across categories",
+    x = "Product Category",
+    y = "Number of Order Items",
+    fill = "Customer Segment"
+  ) +
+  theme_minimal()
+
+plot2
+
+#3. Histogram of sales
+plot3 <- dt_date %>%
+  filter(sales > 0,!is.na(sales)) %>%
+  ggplot(aes(x = sales)) +
+  geom_histogram(bins = 40,color = "white" ) +
+  scale_x_log10(labels = dollar ) +
+  labs(
+    title = "Distribution of Sales",
+    subtitle = "Sales are displayed on a logarithmic scale",
+    x = "Sales",
+    y = "Number of Order Items"
+  ) +
+  theme_minimal()
+
+plot3
+
+#4.Box plot of profit by category and customer segment
+profit_lower <- quantile(dt_date$profit,0.01,na.rm = TRUE)
+
+profit_upper <- quantile(dt_date$profit,0.99,na.rm = TRUE)
+
+plot4 <- ggplot(dt_date,aes(x = category,y = profit,fill = segment)) +
+  geom_boxplot(outlier.alpha = 0.2,
+               position = position_dodge(width = 0.8)) +
+  coord_cartesian(ylim = c(profit_lower,profit_upper) ) +
+  scale_y_continuous(labels = dollar) +
+  labs(
+    title = "Profit Distribution by Product Category and Customer Segment",
+    subtitle = "The vertical axis displays the 1st through 99th percentiles",
+    x = "Product Category",
+    y = "Profit",
+    fill = "Customer Segment"
+  ) +
+  theme_minimal()
+
+plot4
+
+#5. Scatterplot of sales and profit
+plot5 <- dt_date %>%
+  filter(sales > 0,!is.na(profit),!is.na(category),!is.na(quantity)) %>%
+  ggplot(aes(x = sales,y = profit,color = category,size = quantity)) +
+  geom_point(alpha = 0.4) +
+  geom_hline(yintercept = 0,linetype = "dashed") +
+  scale_x_log10(labels = dollar ) +
+  scale_y_continuous(labels = dollar) +
+  labs(
+    title = "Relationship Between Sales and Profit",
+    subtitle = "Color represents category and point size represents quantity",
+    x = "Sales on a Logarithmic Scale",
+    y = "Profit",
+    color = "Product Category",
+    size = "Quantity"
+  ) +
+  theme_minimal()
+
+plot5
+```
+
+Extra plot not learned from the class
+
+**plot6:** This plot shows whether higher discounts are associated with lower profits. Also shows whether that relationship differs across product categories and customer segments.
+
+```{r,warning=FALSE}
+#6. Discount and profit by product category
+plot6 <- dt_date %>%
+  drop_na(discount,profit,category,segment ) %>%
+  ggplot(aes(x = discount,y = profit,color = segment)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "loess",se = FALSE,linewidth = 0.8) +
+  geom_hline(yintercept = 0,linetype = "dashed") +
+  facet_wrap(~ category ) +
+  coord_cartesian(ylim = c(profit_lower,profit_upper ) ) +
+  scale_x_continuous(labels = scales::percent) +
+  scale_y_continuous(labels = scales::dollar) +
+  labs(
+    title = "Relationship Between Discount and Profit by Product Category",
+    subtitle = "Smooth curves show the general pattern for each customer segment",
+    x = "Discount",
+    y = "Profit",
+    color = "Customer Segment"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+plot6
+```
+
+**plot 7:** This plot shows how sales change over time. In addition, the plot also tells me whether the three product categories follow similar or different patterns.
+
+```{r}
+#7. Monthly sales trends by product category
+monthly_category_sales <- dt_date %>%
+  drop_na(order_year_month,category,sales) %>%
+  group_by(order_year_month,category ) %>%
+  summarize(total_sales = sum(sales,na.rm = TRUE),.groups = "drop")
+
+monthly_category_sales
+
+plot7 <- ggplot(
+  monthly_category_sales,
+  aes(x = order_year_month,y = total_sales,color = category)) +
+  geom_line(linewidth = 0.9 ) +
+  geom_point(size = 1.2 ) +
+  scale_x_date(date_breaks = "6 months",
+               labels = scales::label_date(format = "%b %Y",locale = "C")) +
+  scale_y_continuous(labels = scales::dollar ) +
+  labs(
+    title = "Monthly Sales Trends by Product Category",
+    subtitle = "Total sales are aggregated by month",
+    x = "Order Month",
+    y = "Total Monthly Sales",
+    color = "Product Category") +
+  theme_minimal() +
+  theme(legend.position = "bottom",
+        axis.text.x = element_text(angle = 45,hjust = 1))
+
+plot7
+
+```
+
+**plot8:** This ridgeline plot compares the full profit distributions across product sub-categories.
+
+```{r}
+#8.Profit distributions across product sub-categories
+plot8 <- dt_date %>%
+  drop_na(sub_category,profit) %>%
+  dplyr::filter(profit >= profit_lower,profit <= profit_upper ) %>%
+  ggplot(aes(x = profit,
+             y = forcats::fct_reorder(sub_category,profit,median),
+             fill = after_stat(x)) ) +
+  geom_density_ridges_gradient(scale = 2.5,rel_min_height = 0.01 ) +
+  geom_vline(xintercept = 0,linetype = "dashed") +
+  scale_x_continuous(labels = scales::dollar) +
+  scale_fill_viridis_c(labels = scales::dollar ) +
+  labs(
+    title = "Profit Distributions Across Product Sub-Categories",
+    subtitle = "Sub-categories are ordered by median profit",
+    x = "Profit",
+    y = "Product Sub-Category",
+    fill = "Profit"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+plot8
+
+```
+
+**plot 9:** This plot shows the relationship between sales and profit. It also shows the separate distributions of both variables.
+
+```{r}
+
+#9.Sales and profit with marginal distributions
+base_plot <- dt_date %>%
+  dplyr::filter(sales > 0,!is.na(profit),!is.na(category)) %>%
+  ggplot(aes(x = log10(sales),y = profit,color = category)) +
+  geom_point(alpha = 0.35) +
+  geom_hline(yintercept = 0,linetype = "dashed") +
+  coord_cartesian(ylim = c(profit_lower,profit_upper) ) +
+  labs(
+    title = "Sales and Profit with Marginal Distributions",
+    subtitle = "Marginal density curves show the distributions of sales and profit",
+    x = "Log10 Sales",
+    y = "Profit",
+    color = "Product Category"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "right" )
+
+plot9 <- ggExtra::ggMarginal(
+  base_plot,
+  type = "density",
+  groupColour = TRUE,
+  groupFill = TRUE,
+  alpha = 0.3
+)
+
+plot9
+```
