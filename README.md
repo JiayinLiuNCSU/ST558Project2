@@ -3,13 +3,13 @@ I choose the US store data set. I'm interested in the question:What factors are 
 
 Sub-question includes following:
 
-Do sales and profit differ across product categories, customer segments, and regions?
+1. Do sales and profit differ across product categories, customer segments, and regions?
 
-Is a higher discount associated with lower profit?
+2. Is a higher discount associated with lower profit?
 
-Does the relationship between sales and profit differ by product category?
+3. Does the relationship between sales and profit differ by product category?
 
-How do monthly sales and profit change over time?
+4. How do monthly sales and profit change over time?
 
 All the information related to the questions can be found in the DataDescription file. 
 
